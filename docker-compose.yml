@@ -1,0 +1,137 @@
+version: "3.7"
+services:
+  # add your services here:
+  #your-service-1:
+  #  image: your-image
+  #  ports:
+  #    - "80:8080"
+  #  networks:
+  #    - your-app-network
+
+  # supporting databases
+  # feel free to edit this section
+  mongo-db:
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: mongousername
+      MONGO_INITDB_ROOT_PASSWORD: mongopassword
+    networks:
+      - mongo-network
+  postgres-db:
+    image: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_PASSWORD: postgresuser
+      POSTGRES_USER: postgrespassword
+    networks:
+      - postgres-network
+  redis-db:
+    image: redis:5.0.6-alpine3.10
+    ports:
+      - "6379:6379"
+    networks:
+      - redis-network
+
+  kafka:
+    image: confluentinc/cp-kafka
+    hostname: kafka
+    ports:
+      - '9092:9092'
+      - '29092:29092'
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - zookeeper-network
+      - kafka-network
+  zookeeper:
+    image: bitnami/zookeeper:latest
+    ports:
+      - '2181:2181'
+    volumes:
+      - 'zookeeper_data:/bitnami'
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
+    networks:
+      - zookeeper-network
+  schema-registry:
+    image: confluentinc/cp-schema-registry
+    depends_on:
+      - kafka
+      - zookeeper
+    environment:
+          SCHEMA_REGISTRY_HOST_NAME: schema-registry
+          SCHEMA_REGISTRY_KAFKASTORE_CONNECTION_URL: zookeeper:2181
+          SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+    ports:
+      - "8081:8081"
+    networks:
+      - zookeeper-network
+  rest-proxy:
+    image: confluentinc/cp-kafka-rest:5.1.0
+    depends_on:
+      - zookeeper
+      - kafka
+      - schema-registry
+    environment:
+      KAFKA_REST_HOST_NAME: rest-proxy
+      KAFKA_REST_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_REST_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_REST_LISTENERS: http://0.0.0.0:8082
+      KAFKA_REST_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+    networks:
+      - zookeeper-network
+      - kafka-network
+    ports:
+      - "8082:8082"
+  ksql-server:
+    image: "confluentinc/cp-ksql-server:5.1.0"
+    depends_on:
+      - kafka
+      - schema-registry
+    environment:
+      KSQL_BOOTSTRAP_SERVERS: kafka:29092
+      KSQL_LISTENERS: http://0.0.0.0:8088
+      KSQL_KSQL_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+    ports:
+      - "8088:8088"
+    networks:
+      - zookeeper-network
+      - kafka-network
+  ksql-cli:
+    image: confluentinc/cp-ksql-cli:5.1.0
+    entrypoint: /bin/sh
+    tty: true
+  zipkin:
+    image: openzipkin/zipkin
+    ports:
+      - "9411:9411"
+
+volumes:
+  # your_app_data: # do you really need storage for this?
+  #  driver: local
+  zookeeper_data:
+    driver: local
+  kafka_data:
+    driver: local
+
+networks:
+  kafka-network:
+    name: loxchat_kafka-network
+  postgres-network:
+    name: loxchat_postgres-network
+  mongo-network:
+    name: loxchat_mongo-network
+  redis-network:
+    name: loxchat_redis-network
+  zookeeper-network:
+    name: loxchat_zookeeper-network
